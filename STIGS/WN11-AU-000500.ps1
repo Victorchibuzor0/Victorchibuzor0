@@ -26,7 +26,6 @@
     PS C:\> .\__remediation_template(STIG-ID-WN10-AU-000500).ps1 
 #>
 
-# YOUR CODE GOES HERE
 $path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\EventLog\Application'
 
 # Create the key if it doesn't exist (New-Item -Force also creates missing parent keys)
