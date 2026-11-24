@@ -1,18 +1,31 @@
-#Requires -RunAsAdministrator
+$dir  = "$env:SystemRoot\System32\GroupPolicy"
+$csv  = "$dir\Machine\Microsoft\Windows NT\Audit\audit.csv"
+$ini  = "$dir\gpt.ini"
+$guid = '{0cce9215-69ae-11d9-bed3-505054503030}'
 
-# Subcategory: Logon/Logoff >> Audit Logon
-$logonGuid = '{0CCE9215-69AE-11D9-BED3-505054503030}'
+# Backups
+Copy-Item $csv "$csv.bak" -Force
+if (Test-Path $ini) { Copy-Item $ini "$ini.bak" -Force }
 
-# Failure only: success disabled, failure enabled
-auditpol.exe /set /subcategory:$logonGuid /success:disable /failure:enable
-if ($LASTEXITCODE -ne 0) { throw "auditpol failed with exit code $LASTEXITCODE" }
+# 1. Replace any existing Logon row with Failure (Setting Value 2 = Failure)
+$lines = Get-Content $csv | Where-Object { $_.Trim() -and $_ -notmatch [regex]::Escape($guid) }
+$lines += ",System,Audit Logon,$guid,Failure,,2"
+Set-Content -Path $csv -Value $lines -Encoding ASCII
 
-# Verify
-$result = auditpol.exe /get /subcategory:$logonGuid /r |
-    Where-Object { $_ } | ConvertFrom-Csv
-
-if ($result.'Inclusion Setting' -eq 'Failure') {
-    Write-Host "Audit Logon is set to: Failure" -ForegroundColor Green
+# 2. Bump the policy version in gpt.ini
+if (Test-Path $ini) {
+    $text = Get-Content $ini -Raw
+    if ($text -match 'Version=(\d+)') {
+        $text = $text -replace 'Version=\d+', "Version=$([int]$Matches[1] + 1)"
+    } else {
+        $text = $text.TrimEnd() + "`r`nVersion=1`r`n"
+    }
+    Set-Content -Path $ini -Value $text -Encoding ASCII
 } else {
-    Write-Warning "Audit Logon is currently: $($result.'Inclusion Setting')"
+    Set-Content -Path $ini -Value "[General]`r`nVersion=1" -Encoding ASCII
 }
+
+# 3. Apply and verify
+gpupdate /force | Out-Null
+auditpol /get /subcategory:$guid
+Get-Content $csv
